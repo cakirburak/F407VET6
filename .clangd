@@ -1,0 +1,7 @@
+Diagnostics:
+    Suppress: ['*', 'fatal-too-many-errors']
+    UnusedIncludes: None
+    Includes:
+        IgnoreHeader: '^<.*>$'
+CompileFlags:
+  Add: [-ferror-limit=1000]
