@@ -1,26 +1,78 @@
-/* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  */
-/* USER CODE END Header */
-/* Includes ------------------------------------------------------------------*/
+ ******************************************************************************
+ * @file           : main.c
+ * @brief          : Main program body
+ ******************************************************************************
+ */
 #include "main.h"
 
-/* Private variables ---------------------------------------------------------*/
-I2C_HandleTypeDef hi2c1;
+/**
+ * 0100 is fixed for pcf8574
+ * A2 A1 A0 is defined by user meaning there can be 8 slave lcd device for one I2C connection
+ * R/W "0" for writing to DDRAM, "1" for reading from DDRAM
+ */
+#define SLAVE_ADDRESS_LCD 0x4E // 0 1 0 0 A2 A1 A0 R/W
 
-/* Private function prototypes -----------------------------------------------*/
+I2C_HandleTypeDef hi2c1;
+uint8_t NumberBuffer[8];
+
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 
-/**
-  * @brief  The application entry point.
-  * @retval int
-  */
+void BC_LCD_Init(void);
+void BC_LCD_SendCmd(uint8_t);
+void BC_LCD_SendData(uint8_t);
+void BC_LCD_SendString(uint8_t*);
+void BC_LCD_PutCursor(uint32_t, uint32_t);
+void BC_LCD_SendInteger(int32_t);
+
+uint8_t* BC_Util_itoa(int num, uint8_t* str, int base) {
+    int i = 0;
+    int isNegative = 0;
+
+    // Handle 0 explicitly, otherwise empty string is printed
+    if (num == 0) {
+        str[i++] = '0';
+        str[i] = '\0';
+        return str;
+    }
+
+    // Handle negative numbers only if base is 10
+    if (num < 0 && base == 10) {
+        isNegative = 1;
+        num = -num;
+    }
+
+    // Process individual digits
+    while (num != 0) {
+        int rem = num % base;
+        str[i++] = (rem > 9) ? (rem - 10) + 'a' : rem + '0';
+        num = num / base;
+    }
+
+    // Append negative sign for negative numbers
+    if (isNegative) {
+        str[i++] = '-';
+    }
+
+    // Null-terminate the string
+    str[i] = '\0';
+
+    // Reverse the string
+    int start = 0;
+    int end = i - 1;
+    while (start < end) {
+        uint8_t temp = str[start];
+        str[start] = str[end];
+        str[end] = temp;
+        start++;
+        end--;
+    }
+
+    return str;
+}
+
 int main(void)
 {
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
@@ -31,10 +83,132 @@ int main(void)
   MX_GPIO_Init();
   MX_I2C1_Init();
   
+  BC_LCD_Init();
+  BC_LCD_PutCursor(0, 0);
+  HAL_Delay(10);
+  BC_LCD_SendString((uint8_t*)"Selamin Aleykum");
+  HAL_Delay(10);
+  BC_LCD_PutCursor(1, 0);
+  HAL_Delay(10);
+  BC_LCD_SendString((uint8_t*)"Hayirli Cumalar");
+  HAL_Delay(10);
+  
+  int32_t Counter = 1;
+  int32_t IsIncremented = 0;
   while (1)
   {
+    GPIO_PinState SwitchState_K0 = HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_4);
+    GPIO_PinState SwitchState_K1 = HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_3);
+    
+    if(IsIncremented)
+    {
+      BC_LCD_SendCmd(0x01); // clear display
+      HAL_Delay(2);
+      BC_LCD_SendInteger(Counter);
+      IsIncremented = 0;
+    }
+    
+    if(!SwitchState_K1)
+    {
+      if(!IsIncremented)
+      {
+        Counter++;
+        IsIncremented = 1;
+      }
+    }
+    else
+    {
+      IsIncremented = 0;
+    }
   }
 }
+
+void BC_LCD_Init(void)
+{
+  // 4 bit initialisation
+  HAL_Delay(50);        // wait for >40ms
+  BC_LCD_SendCmd (0x30);
+  HAL_Delay(5);         // wait for >4.1ms
+  BC_LCD_SendCmd (0x30);
+  HAL_Delay(1);         // wait for >100us
+  BC_LCD_SendCmd (0x30);
+  HAL_Delay(10);
+  BC_LCD_SendCmd (0x20);  // 4bit mode
+  HAL_Delay(10);
+
+  // display initialisation
+  BC_LCD_SendCmd (0x28); // Function set --> DL=0 (4 bit mode), N = 1 (2 line display) F = 0 (5x8 characters)
+  HAL_Delay(1);
+  BC_LCD_SendCmd (0x08); //Display on/off control --> D=0,C=0, B=0  ---> display off
+  HAL_Delay(1);
+  BC_LCD_SendCmd (0x01); // clear display
+  HAL_Delay(2);
+  BC_LCD_SendCmd (0x06); //Entry mode set --> I/D = 1 (increment cursor) & S = 0 (no shift)
+  HAL_Delay(1);
+  BC_LCD_SendCmd (0x0F); //Display on/off control --> D = 1, C and B = 0. (Cursor and blink, last two bits)
+  HAL_Delay(1);
+}
+
+void BC_LCD_SendCmd(uint8_t cmd)
+{
+  uint8_t cmd_u, cmd_l;
+  cmd_u = (cmd & 0xF0);
+  cmd_l = ((cmd << 4) & 0xF0);
+  
+  uint8_t cmd_t[4] = {0};
+  // To send the strobe(E), we need to send the same data twice
+  cmd_t[0] = cmd_u | 0x0C; // E = 1, RS = 0 -> xxxx1100
+  cmd_t[1] = cmd_u | 0x08; // E = 0, RS = 0 -> xxxx1000
+  cmd_t[2] = cmd_l | 0x0C; // E = 1, RS = 0 -> xxxx1100
+  cmd_t[3] = cmd_l | 0x08; // E = 0, RS = 0 -> xxxx1000
+  HAL_I2C_Master_Transmit(&hi2c1, SLAVE_ADDRESS_LCD, cmd_t, 4, 100);
+}
+
+
+void BC_LCD_SendData(uint8_t data)
+{
+  uint8_t data_u, data_l;
+  data_u = (data & 0xF0);
+  data_l = ((data << 4) & 0xF0);
+  
+  uint8_t data_t[4] = {0};
+  // To send the strobe(E), we need to send the same data twice
+  data_t[0] = data_u | 0x0D; // E = 1, RS = 1 -> xxxx1101
+  data_t[1] = data_u | 0x09; // E = 0, RS = 1 -> xxxx1001
+  data_t[2] = data_l | 0x0D; // E = 1, RS = 1 -> xxxx1101
+  data_t[3] = data_l | 0x09; // E = 0, RS = 1 -> xxxx1001
+  HAL_I2C_Master_Transmit(&hi2c1, SLAVE_ADDRESS_LCD, data_t, 4, 100);
+}
+
+void BC_LCD_SendString(uint8_t* str)
+{
+  while (*str) BC_LCD_SendData(*str++);
+}
+
+void BC_LCD_SendInteger(int32_t number)
+{
+  uint8_t buffer[8] = {0};
+  BC_Util_itoa(number, buffer, 10);
+  uint8_t* ptr = buffer;
+  while (*ptr) BC_LCD_SendData(*ptr++);
+}
+
+void BC_LCD_PutCursor(uint32_t row, uint32_t col)
+{
+  switch (row)
+  {
+    case 0:
+    {
+      col |= 0x80;
+    } break;
+    case 1:
+    {
+      col |= 0xC0;
+    } break;
+  }
+  BC_LCD_SendCmd(col);
+}
+
 
 /**
   * @brief System Clock Configuration
@@ -116,6 +290,14 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOE_CLK_ENABLE();
+  
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pin = GPIO_PIN_3 | GPIO_PIN_4;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 }
 
 /**
