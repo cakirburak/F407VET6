@@ -90,7 +90,7 @@ int main(void)
   HAL_Delay(10);
   BC_LCD_PutCursor(1, 0);
   HAL_Delay(10);
-  BC_LCD_SendString((uint8_t*)"Hayirli Cumalar");
+  BC_LCD_SendString((uint8_t*)"Selo Kardes");
   HAL_Delay(10);
   
   int32_t Counter = 1;
