@@ -93,33 +93,8 @@ int main(void)
   BC_LCD_SendString((uint8_t*)"Selo Kardes");
   HAL_Delay(10);
   
-  int32_t Counter = 1;
-  int32_t IsIncremented = 0;
   while (1)
   {
-    GPIO_PinState SwitchState_K0 = HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_4);
-    GPIO_PinState SwitchState_K1 = HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_3);
-    
-    if(IsIncremented)
-    {
-      BC_LCD_SendCmd(0x01); // clear display
-      HAL_Delay(2);
-      BC_LCD_SendInteger(Counter);
-      IsIncremented = 0;
-    }
-    
-    if(!SwitchState_K1)
-    {
-      if(!IsIncremented)
-      {
-        Counter++;
-        IsIncremented = 1;
-      }
-    }
-    else
-    {
-      IsIncremented = 0;
-    }
   }
 }
 
@@ -262,7 +237,6 @@ void SystemClock_Config(void)
   */
 static void MX_I2C1_Init(void)
 {
-
   hi2c1.Instance = I2C1;
   hi2c1.Init.ClockSpeed = 100000;
   hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
@@ -289,15 +263,24 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  
+  // I2C SLC and SDA Ports
   __HAL_RCC_GPIOB_CLK_ENABLE();
+  // ----
+  
+  // KEY0 and KEY1 on PE4 and PE3
   __HAL_RCC_GPIOE_CLK_ENABLE();
+  // ----
   
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pin = GPIO_PIN_3 | GPIO_PIN_4;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
   
+  GPIO_InitStruct.Pin = GPIO_PIN_3;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+  
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
 }
 
 /**

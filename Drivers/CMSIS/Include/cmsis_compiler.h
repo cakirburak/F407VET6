@@ -27,6 +27,10 @@
 
 #include <stdint.h>
 
+#if !defined __ARMCC_VERSION
+#define __ARMCC_VERSION 6220000 // v6.22
+#endif
+
 /*
  * Arm Compiler 4/5
  */
