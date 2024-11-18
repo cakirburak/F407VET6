@@ -27,6 +27,27 @@ void BC_LCD_SendString(uint8_t*);
 void BC_LCD_PutCursor(uint32_t, uint32_t);
 void BC_LCD_SendInteger(int32_t);
 
+volatile int32_t counter = 0;
+
+/**
+  * @brief This function handles EXTI line0 interrupt.
+  */
+volatile uint32_t lastInterruptTime = 0; // Track the last interrupt time
+void EXTI0_IRQHandler(void)
+{
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_0);
+  
+  uint32_t currentTime = HAL_GetTick(); // Get the current system time in milliseconds
+  
+  if (currentTime - lastInterruptTime > 40) { // Debounce delay of 40ms
+      HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_3);
+      counter++;
+  }
+  
+  lastInterruptTime = currentTime;
+}
+
+
 uint8_t* BC_Util_itoa(int num, uint8_t* str, int base) {
     int i = 0;
     int isNegative = 0;
@@ -84,17 +105,16 @@ int main(void)
   MX_I2C1_Init();
   
   BC_LCD_Init();
-  BC_LCD_PutCursor(0, 0);
-  HAL_Delay(10);
-  BC_LCD_SendString((uint8_t*)"Selamin Aleykum");
-  HAL_Delay(10);
-  BC_LCD_PutCursor(1, 0);
-  HAL_Delay(10);
-  BC_LCD_SendString((uint8_t*)"Selo Kardes");
   HAL_Delay(10);
   
   while (1)
-  {
+  {  
+    static int32_t lastCounter = -1;
+    if (lastCounter != counter) {
+        BC_LCD_PutCursor(0, 0);
+        BC_LCD_SendInteger(counter);
+        lastCounter = counter;
+    }
   }
 }
 
@@ -111,7 +131,7 @@ void BC_LCD_Init(void)
   BC_LCD_SendCmd (0x20);  // 4bit mode
   HAL_Delay(10);
 
-  // display initialisation
+  // display initializetion
   BC_LCD_SendCmd (0x28); // Function set --> DL=0 (4 bit mode), N = 1 (2 line display) F = 0 (5x8 characters)
   HAL_Delay(1);
   BC_LCD_SendCmd (0x08); //Display on/off control --> D=0,C=0, B=0  ---> display off
@@ -120,7 +140,7 @@ void BC_LCD_Init(void)
   HAL_Delay(2);
   BC_LCD_SendCmd (0x06); //Entry mode set --> I/D = 1 (increment cursor) & S = 0 (no shift)
   HAL_Delay(1);
-  BC_LCD_SendCmd (0x0F); //Display on/off control --> D = 1, C and B = 0. (Cursor and blink, last two bits)
+  BC_LCD_SendCmd (0x0C); //Display on/off control --> D = 1, C and B = 0. (Cursor and blink, last two bits)
   HAL_Delay(1);
 }
 
@@ -137,6 +157,7 @@ void BC_LCD_SendCmd(uint8_t cmd)
   cmd_t[2] = cmd_l | 0x0C; // E = 1, RS = 0 -> xxxx1100
   cmd_t[3] = cmd_l | 0x08; // E = 0, RS = 0 -> xxxx1000
   HAL_I2C_Master_Transmit(&hi2c1, SLAVE_ADDRESS_LCD, cmd_t, 4, 100);
+  HAL_Delay(1);
 }
 
 
@@ -153,6 +174,7 @@ void BC_LCD_SendData(uint8_t data)
   data_t[2] = data_l | 0x0D; // E = 1, RS = 1 -> xxxx1101
   data_t[3] = data_l | 0x09; // E = 0, RS = 1 -> xxxx1001
   HAL_I2C_Master_Transmit(&hi2c1, SLAVE_ADDRESS_LCD, data_t, 4, 100);
+  HAL_Delay(1);
 }
 
 void BC_LCD_SendString(uint8_t* str)
@@ -269,18 +291,18 @@ static void MX_GPIO_Init(void)
   // ----
   
   // KEY0 and KEY1 on PE4 and PE3
-  __HAL_RCC_GPIOE_CLK_ENABLE();
+  // __HAL_RCC_GPIOE_CLK_ENABLE();
   // ----
   
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   
-  GPIO_InitStruct.Pin = GPIO_PIN_3;
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
   
-  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 }
 
 /**

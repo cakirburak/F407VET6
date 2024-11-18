@@ -474,7 +474,7 @@ HAL_StatusTypeDef HAL_GPIO_LockPin(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin)
   tmp = GPIOx->LCKR;
 
   /* Read again in order to confirm lock is active */
- if((GPIOx->LCKR & GPIO_LCKR_LCKK) != RESET)
+  if((GPIOx->LCKR & GPIO_LCKR_LCKK) != RESET)
   {
     return HAL_OK;
   }
